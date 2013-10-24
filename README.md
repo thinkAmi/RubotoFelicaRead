@@ -1,7 +1,8 @@
 RubotoFelicaRead
 ========
 
-nfc-felicaライブラリを使い、Suica・Edyの履歴を読むRubotoアプリです。
+nfc-felicaライブラリを使い、Suica・Edy・Kururuの履歴を読むRubotoアプリです。
+(Kururuは長野市バス共通ICカードになります)
 
 
 
@@ -9,11 +10,11 @@ nfc-felicaライブラリを使い、Suica・Edyの履歴を読むRubotoアプ�
 ----------
 
 * OS: Windows7 x64
-* JDK: 1.7.0_25
+* JDK: 1.7.0_45
 * ant: 1.9.1
 * Ruby: RubyInstaller 1.9.3-p448
-* Ruboto: 0.13.0
-* jruby-jars: 1.7.4
+* Ruboto: 0.15.0
+* jruby-jars: 1.7.6
 * Device: Nexus7 2012
 * API Level: android-17
 
@@ -21,11 +22,9 @@ nfc-felicaライブラリを使い、Suica・Edyの履歴を読むRubotoアプ�
 セットアップ
 ----------
 
-git clone後、rake install でビルドします。
-
+`git clone`後、`rake install`でビルド・端末へのインストールを行います。
 あとは、アプリを起動してSuica・Edyをかざせば、それらの履歴が表示されます。
-
-なお、カード内のデータを利用しているため、履歴を表示する最大件数は、Suica20件・Edy6件になります。
+なお、カード内のデータを利用しているため、履歴を表示する最大件数は、Suica20件・Edy6件、Kururuはたぶん9件になります(Kururuは履歴を全部埋めていないため、正確には分かりません)。
 
 
 クレジット
@@ -33,7 +32,7 @@ git clone後、rake install でビルドします。
 ### Ruboto ###
 [公式ページ：Ruboto](http://ruboto.org/index.html)
 
-AndroidアプリをRubyで書くために使用しています。
+AndroidアプリをRuby(JRuby)で書くために使用しています。
 
 
 ### nfc-felica ###

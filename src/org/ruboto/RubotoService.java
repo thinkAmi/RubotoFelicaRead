@@ -168,25 +168,6 @@ public class RubotoService extends android.app.Service implements org.ruboto.Rub
     }
   }
 
-  public void onStart(android.content.Intent intent, int startId) {
-    if (ScriptLoader.isCalledFromJRuby()) {super.onStart(intent, startId); return;}
-    if (!JRubyAdapter.isInitialized()) {
-      Log.i("Method called before JRuby runtime was initialized: RubotoService#onStart");
-      {super.onStart(intent, startId); return;}
-    }
-    String rubyClassName = scriptInfo.getRubyClassName();
-    if (rubyClassName == null) {super.onStart(intent, startId); return;}
-    if ((Boolean)JRubyAdapter.runScriptlet(rubyClassName + ".instance_methods(false).any?{|m| m.to_sym == :on_start}")) {
-      JRubyAdapter.runRubyMethod(scriptInfo.getRubyInstance(), "on_start", new Object[]{intent, startId});
-    } else {
-      if ((Boolean)JRubyAdapter.runScriptlet(rubyClassName + ".instance_methods(false).any?{|m| m.to_sym == :onStart}")) {
-        JRubyAdapter.runRubyMethod(scriptInfo.getRubyInstance(), "onStart", new Object[]{intent, startId});
-      } else {
-        {super.onStart(intent, startId); return;}
-      }
-    }
-  }
-
   public boolean onUnbind(android.content.Intent intent) {
     if (ScriptLoader.isCalledFromJRuby()) return super.onUnbind(intent);
     if (!JRubyAdapter.isInitialized()) {

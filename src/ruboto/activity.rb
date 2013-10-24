@@ -14,9 +14,24 @@ require 'ruboto/package'
 #
 module Ruboto
   module Context
-    def start_ruboto_dialog(remote_variable, theme=Java::android.R.style::Theme_Dialog, &block)
-      java_import 'org.ruboto.RubotoDialog'
-      start_ruboto_activity(remote_variable, RubotoDialog, theme, &block)
+    def start_ruboto_dialog(class_name = nil, options = nil, &block)
+      if options.nil?
+        if class_name.is_a?(Hash)
+          options = class_name
+          class_name = nil
+        else
+          options = {}
+        end
+      end
+
+      unless options.key?(:java_class)
+        java_import 'org.ruboto.RubotoDialog'
+        options[:java_class] = RubotoDialog
+      end
+
+      options[:theme] = android.R.style::Theme_Dialog unless options.key?(:theme)
+
+      start_ruboto_activity(class_name, options, &block)
     end
 
     def start_ruboto_activity(class_name = nil, options = nil, &block)
@@ -43,12 +58,15 @@ module Ruboto
       # EMXIF
 
       script_name = options.delete(:script)
+      extras = options.delete(:extras)
       raise "Unknown options: #{options}" unless options.empty?
 
       if class_name.nil? && block_given?
         class_name =
             "#{java_class.name.split('::').last}_#{source_descriptor(block)[0].split('/').last.gsub(/[.-]+/, '_')}_#{source_descriptor(block)[1]}"
       end
+
+      class_name = class_name.to_s
 
       if Object.const_defined?(class_name)
         Object.const_get(class_name).class_eval(&block) if block_given?
@@ -60,6 +78,7 @@ module Ruboto
       i.putExtra(Ruboto::THEME_KEY, theme) if theme
       i.putExtra(Ruboto::CLASS_NAME_KEY, class_name) if class_name
       i.putExtra(Ruboto::SCRIPT_NAME_KEY, script_name) if script_name
+      extras.each { |k, v| i.putExtra(k.to_s, v) } if extras
       startActivity i
       self
     end

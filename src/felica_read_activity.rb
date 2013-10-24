@@ -4,19 +4,19 @@ require 'ruboto/widget'
 require 'ruboto/util/toast'
 require 'suica'
 require 'edy'
+require 'kururu'
 require 'felica_lib'
+require 'felica_tag'
+require 'util'
 
 ruboto_import_widgets :LinearLayout, :ScrollView, :TextView, :Button
 
-java_import 'net.kazzz.felica.FeliCaTag'
-java_import 'net.kazzz.felica.lib.FeliCaLib'
-java_import 'net.kazzz.felica.suica.Suica'
 java_import 'android.nfc.NfcAdapter'
 java_import 'android.nfc.NfcManager'
 java_import 'android.nfc.tech.NfcF'
 java_import 'android.content.Intent'
 java_import 'android.app.PendingIntent'
-
+java_import 'android.util.Log'
 
 class FelicaReadActivity
   def onCreate(bundle)
@@ -45,28 +45,16 @@ class FelicaReadActivity
     return unless a == NfcAdapter::ACTION_TECH_DISCOVERED ||
                   a == NfcAdapter::ACTION_TAG_DISCOVERED
 
-    toast '読み込みを開始します'
+    dump = read_felica(intent)
 
-    # Suicaのシステムコードかどうかで、Suica/Edyの判定をしている(手抜き...)
-    tag = intent.getParcelableExtra(NfcAdapter::EXTRA_TAG);
-    case to_system_code(NfcF.get(tag).getSystemCode)
-    when FeliCaLib::SYSTEMCODE_SUICA
-      h, b = dump_history(tag,
-                          FeliCaLib::SYSTEMCODE_SUICA,
-                          FeliCaLib::SERVICE_SUICA_HISTORY,
-                          ->(block_data, activity){ Suica::History.new(block_data, activity) } )
-
+    if dump.nil?
+      toast '不明なFeliCaが読み込まれたため、処理できませんでした。'
     else
-      h, b = dump_history(tag,
-                          FeliCaLib::SYSTEMCODE_EDY,
-                          FeliCaLib::SERVICE_EDY_HISTORY,
-                          ->(block_data, activity){ Edy.new(block_data) } )
+      @history.text = dump[:history]
+      @balance.text = '現在の残高： ￥' + Util.add_thousand_separator(dump[:balance].to_s)
+
+      toast '読み込みが完了しました。'
     end
-
-    @history.text = h
-    @balance.text = '現在の残高： ￥' + b.to_s.gsub(/(?<=\d)(?=(?:\d{3})+(?!\d))/, ',')
-
-    toast '読み込みが完了しました。'
   end
 
 
@@ -89,8 +77,10 @@ class FelicaReadActivity
 
   def onPause
     super
-    @adapter.disableForegroundDispatch(self) if isFinishing
+    # こちらも onResume 同様、nilになっていることがあるため、nilチェックを追加
+    @adapter.disableForegroundDispatch(self) if isFinishing && !@adapter.nil?
   end
+
 
   def create_pending_intent
     p = getPackageName
@@ -103,8 +93,41 @@ class FelicaReadActivity
   end
 
 
-  def to_system_code(bytes)
-    bytes.nil? ? '' : bytes.map{ |byte| "%02X" % (byte & 0xff) }.join.to_i
+
+  def read_felica(intent)
+    tag = intent.getParcelableExtra(NfcAdapter::EXTRA_TAG);
+    codes = FeliCaTag.new_instance(tag).getSystemCodeList
+
+    # 最初に一致したシステムコードのデータを読み込む
+    codes.each do |code|
+      system_code = Util.getHexString(code.getBytes)
+
+      # 今後のデバッグを考え、読み込んだシステムコードをログに出力しておく
+      Log.v 'ruboto_felica_read', "システムコード： #{system_code}"
+
+      case system_code
+      when Util.to_system_code_hex_string(FeliCaLib::SYSTEMCODE_SUICA)
+        return dump_history(tag,
+                            FeliCaLib::SYSTEMCODE_SUICA,
+                            FeliCaLib::SERVICE_SUICA_HISTORY,
+                           ->(block_data, activity){ Suica::History.new(block_data, activity) } )
+
+      when Util.to_system_code_hex_string(FeliCaLib::SYSTEMCODE_EDY)
+        return dump_history(tag,
+                            FeliCaLib::SYSTEMCODE_EDY,
+                            FeliCaLib::SERVICE_EDY_HISTORY,
+                            ->(block_data, activity){ Edy.new(block_data) } )
+
+      when Util.to_system_code_hex_string(FeliCaLib::SYSTEMCODE_KURURU)
+        return dump_history(tag,
+                            FeliCaLib::SYSTEMCODE_KURURU,
+                            FeliCaLib::SERVICE_KURURU_HISTORY,
+                            ->(block_data, activity){ Kururu.new(block_data) } )
+      end
+    end
+
+    # ここまで来た場合、どのシステムコードも一致しなかったので、nilを返しておく
+    nil
   end
 
 
@@ -116,14 +139,14 @@ class FelicaReadActivity
     addr = 0
     result = felica_tag.readWithoutEncryption(sc, addr)
 
-    dump = ''
+    history = ''
     while !result.nil? && result.getStatusFlag1 == 0
       target = func.call(result.getBlockData, self)
 
-      dump += <<-EOF.gsub /^\s+/, ""
-        #{target.title} 履歴 No. #{(addr + 1).to_s}
+      history += <<-EOF.gsub /^\s+/, ""
+        #{target.title} 履歴 No. #{(addr + 1)}
         ---------
-        #{target.to_string}
+        #{target.to_s}
         ---------------------------------------
 
       EOF
@@ -134,16 +157,16 @@ class FelicaReadActivity
       begin
         result = felica_tag.readWithoutEncryption(sc, addr)
       rescue
-        dump += <<-EOF.gsub /^\s+/, ""
+        history += <<-EOF.gsub /^\s+/, ""
         ---------------------------------------
         読込が中断されました
         ---------------------------------------
         EOF
 
-        return dump, balance
+        return {history: history, balance: balance}
       end
     end
 
-    return dump, balance
+    return {history: history, balance: balance}
   end
 end

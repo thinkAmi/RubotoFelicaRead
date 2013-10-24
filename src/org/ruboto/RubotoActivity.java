@@ -10,17 +10,7 @@ import android.os.Bundle;
 public class RubotoActivity extends android.app.Activity implements org.ruboto.RubotoComponent {
     public static final String THEME_KEY = "RUBOTO_THEME";
     private final ScriptInfo scriptInfo = new ScriptInfo();
-    private String remoteVariable = null;
     Bundle[] args;
-
-    public RubotoActivity setRemoteVariable(String var) {
-        remoteVariable = var;
-        return this;
-    }
-
-    public String getRemoteVariableCall(String call) {
-        return (remoteVariable == null ? "" : (remoteVariable + ".")) + call;
-    }
 
     public ScriptInfo getScriptInfo() {
         return scriptInfo;
@@ -32,22 +22,21 @@ public class RubotoActivity extends android.app.Activity implements org.ruboto.R
      */
     @Override
     public void onCreate(Bundle bundle) {
-        System.out.println("RubotoActivity onCreate(): " + getClass().getName());
+        System.out.println("RubotoActivity onCreate(): " + getClass().getName() + ", finishing: " + isFinishing());
 
-        // Shut this RubotoActivity down if it's not able to restart 
-        if (!(this instanceof EntryPointActivity) && !JRubyAdapter.isInitialized()) {
+        // Shut this RubotoActivity down if it's not able to restart
+        if (this.getClass().getName().equals("org.ruboto.RubotoActivity") && !JRubyAdapter.isInitialized()) {
             super.onCreate(bundle);
-	        System.out.println("Shutting down stale RubotoActivity: " + getClass().getName());
+            System.out.println("Shutting down stale RubotoActivity: " + getClass().getName());
             finish();
             return;
         }
-				
-       if (ScriptLoader.isCalledFromJRuby()) {
+
+       if (isFinishing() || ScriptLoader.isCalledFromJRuby()) {
             super.onCreate(bundle);
             return;
         }
-        args = new Bundle[1];
-        args[0] = bundle;
+        args = new Bundle[]{bundle};
 
         // FIXME(uwe):  Deprecated as of Ruboto 0.13.0.  Remove in june 2014 (twelve months).
         Bundle configBundle = getIntent().getBundleExtra("Ruboto Config");
@@ -230,25 +219,6 @@ public class RubotoActivity extends android.app.Activity implements org.ruboto.R
         return (java.lang.CharSequence) JRubyAdapter.runRubyMethod(java.lang.CharSequence.class, scriptInfo.getRubyInstance(), "onCreateDescription");
       } else {
         return super.onCreateDescription();
-      }
-    }
-  }
-
-  public android.app.Dialog onCreateDialog(int id) {
-    if (ScriptLoader.isCalledFromJRuby()) return super.onCreateDialog(id);
-    if (!JRubyAdapter.isInitialized()) {
-      Log.i("Method called before JRuby runtime was initialized: RubotoActivity#onCreateDialog");
-      return super.onCreateDialog(id);
-    }
-    String rubyClassName = scriptInfo.getRubyClassName();
-    if (rubyClassName == null) return super.onCreateDialog(id);
-    if ((Boolean)JRubyAdapter.runScriptlet(rubyClassName + ".instance_methods(false).any?{|m| m.to_sym == :on_create_dialog}")) {
-      return (android.app.Dialog) JRubyAdapter.runRubyMethod(android.app.Dialog.class, scriptInfo.getRubyInstance(), "on_create_dialog", id);
-    } else {
-      if ((Boolean)JRubyAdapter.runScriptlet(rubyClassName + ".instance_methods(false).any?{|m| m.to_sym == :onCreateDialog}")) {
-        return (android.app.Dialog) JRubyAdapter.runRubyMethod(android.app.Dialog.class, scriptInfo.getRubyInstance(), "onCreateDialog", id);
-      } else {
-        return super.onCreateDialog(id);
       }
     }
   }
@@ -614,25 +584,6 @@ public class RubotoActivity extends android.app.Activity implements org.ruboto.R
     }
   }
 
-  public void onPrepareDialog(int id, android.app.Dialog dialog) {
-    if (ScriptLoader.isCalledFromJRuby()) {super.onPrepareDialog(id, dialog); return;}
-    if (!JRubyAdapter.isInitialized()) {
-      Log.i("Method called before JRuby runtime was initialized: RubotoActivity#onPrepareDialog");
-      {super.onPrepareDialog(id, dialog); return;}
-    }
-    String rubyClassName = scriptInfo.getRubyClassName();
-    if (rubyClassName == null) {super.onPrepareDialog(id, dialog); return;}
-    if ((Boolean)JRubyAdapter.runScriptlet(rubyClassName + ".instance_methods(false).any?{|m| m.to_sym == :on_prepare_dialog}")) {
-      JRubyAdapter.runRubyMethod(scriptInfo.getRubyInstance(), "on_prepare_dialog", new Object[]{id, dialog});
-    } else {
-      if ((Boolean)JRubyAdapter.runScriptlet(rubyClassName + ".instance_methods(false).any?{|m| m.to_sym == :onPrepareDialog}")) {
-        JRubyAdapter.runRubyMethod(scriptInfo.getRubyInstance(), "onPrepareDialog", new Object[]{id, dialog});
-      } else {
-        {super.onPrepareDialog(id, dialog); return;}
-      }
-    }
-  }
-
   public boolean onPrepareOptionsMenu(android.view.Menu menu) {
     if (ScriptLoader.isCalledFromJRuby()) return super.onPrepareOptionsMenu(menu);
     if (!JRubyAdapter.isInitialized()) {
@@ -724,25 +675,6 @@ public class RubotoActivity extends android.app.Activity implements org.ruboto.R
         JRubyAdapter.runRubyMethod(scriptInfo.getRubyInstance(), "onResume");
       } else {
         {super.onResume(); return;}
-      }
-    }
-  }
-
-  public java.lang.Object onRetainNonConfigurationInstance() {
-    if (ScriptLoader.isCalledFromJRuby()) return super.onRetainNonConfigurationInstance();
-    if (!JRubyAdapter.isInitialized()) {
-      Log.i("Method called before JRuby runtime was initialized: RubotoActivity#onRetainNonConfigurationInstance");
-      return super.onRetainNonConfigurationInstance();
-    }
-    String rubyClassName = scriptInfo.getRubyClassName();
-    if (rubyClassName == null) return super.onRetainNonConfigurationInstance();
-    if ((Boolean)JRubyAdapter.runScriptlet(rubyClassName + ".instance_methods(false).any?{|m| m.to_sym == :on_retain_non_configuration_instance}")) {
-      return (java.lang.Object) JRubyAdapter.runRubyMethod(java.lang.Object.class, scriptInfo.getRubyInstance(), "on_retain_non_configuration_instance");
-    } else {
-      if ((Boolean)JRubyAdapter.runScriptlet(rubyClassName + ".instance_methods(false).any?{|m| m.to_sym == :onRetainNonConfigurationInstance}")) {
-        return (java.lang.Object) JRubyAdapter.runRubyMethod(java.lang.Object.class, scriptInfo.getRubyInstance(), "onRetainNonConfigurationInstance");
-      } else {
-        return super.onRetainNonConfigurationInstance();
       }
     }
   }
@@ -1028,44 +960,6 @@ public class RubotoActivity extends android.app.Activity implements org.ruboto.R
         return (Boolean) JRubyAdapter.runRubyMethod(Boolean.class, scriptInfo.getRubyInstance(), "onKeyLongPress", new Object[]{keyCode, event});
       } else {
         return super.onKeyLongPress(keyCode, event);
-      }
-    }
-  }
-
-  public android.app.Dialog onCreateDialog(int id, android.os.Bundle args) {
-    if (ScriptLoader.isCalledFromJRuby()) return super.onCreateDialog(id, args);
-    if (!JRubyAdapter.isInitialized()) {
-      Log.i("Method called before JRuby runtime was initialized: RubotoActivity#onCreateDialog");
-      return super.onCreateDialog(id, args);
-    }
-    String rubyClassName = scriptInfo.getRubyClassName();
-    if (rubyClassName == null) return super.onCreateDialog(id, args);
-    if ((Boolean)JRubyAdapter.runScriptlet(rubyClassName + ".instance_methods(false).any?{|m| m.to_sym == :on_create_dialog}")) {
-      return (android.app.Dialog) JRubyAdapter.runRubyMethod(android.app.Dialog.class, scriptInfo.getRubyInstance(), "on_create_dialog", new Object[]{id, args});
-    } else {
-      if ((Boolean)JRubyAdapter.runScriptlet(rubyClassName + ".instance_methods(false).any?{|m| m.to_sym == :onCreateDialog}")) {
-        return (android.app.Dialog) JRubyAdapter.runRubyMethod(android.app.Dialog.class, scriptInfo.getRubyInstance(), "onCreateDialog", new Object[]{id, args});
-      } else {
-        return super.onCreateDialog(id, args);
-      }
-    }
-  }
-
-  public void onPrepareDialog(int id, android.app.Dialog dialog, android.os.Bundle args) {
-    if (ScriptLoader.isCalledFromJRuby()) {super.onPrepareDialog(id, dialog, args); return;}
-    if (!JRubyAdapter.isInitialized()) {
-      Log.i("Method called before JRuby runtime was initialized: RubotoActivity#onPrepareDialog");
-      {super.onPrepareDialog(id, dialog, args); return;}
-    }
-    String rubyClassName = scriptInfo.getRubyClassName();
-    if (rubyClassName == null) {super.onPrepareDialog(id, dialog, args); return;}
-    if ((Boolean)JRubyAdapter.runScriptlet(rubyClassName + ".instance_methods(false).any?{|m| m.to_sym == :on_prepare_dialog}")) {
-      JRubyAdapter.runRubyMethod(scriptInfo.getRubyInstance(), "on_prepare_dialog", new Object[]{id, dialog, args});
-    } else {
-      if ((Boolean)JRubyAdapter.runScriptlet(rubyClassName + ".instance_methods(false).any?{|m| m.to_sym == :onPrepareDialog}")) {
-        JRubyAdapter.runRubyMethod(scriptInfo.getRubyInstance(), "onPrepareDialog", new Object[]{id, dialog, args});
-      } else {
-        {super.onPrepareDialog(id, dialog, args); return;}
       }
     }
   }

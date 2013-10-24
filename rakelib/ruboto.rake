@@ -20,7 +20,7 @@ end
 #
 def which(cmd)
   exts = ENV['PATHEXT'] ? ENV['PATHEXT'].split(';') : ['']
-  ENV['PATH'].split(File::PATH_SEPARATOR).each do |path|
+  ENV['PATH'].gsub('\\', '/').split(File::PATH_SEPARATOR).each do |path|
     exts.each do |ext|
       exe = File.join(path, "#{cmd}#{ext}")
       return exe if File.executable? exe
@@ -33,45 +33,46 @@ adb_version_str = `adb version`
 (puts 'Android SDK platform tools not in PATH (adb command not found).'; exit 1) unless $? == 0
 (puts "Unrecognized adb version: #$1"; exit 1) unless adb_version_str =~ /Android Debug Bridge version (\d+\.\d+\.\d+)/
 (puts "adb version 1.0.31 or later required.  Version found: #$1"; exit 1) unless Gem::Version.new($1) >= Gem::Version.new('1.0.31')
-if ENV['ANDROID_HOME'].nil? && (adb_path = which('adb'))
-  ENV['ANDROID_HOME'] = File.dirname(File.dirname(adb_path))
+android_home = ENV['ANDROID_HOME']
+android_home = android_home.gsub("\\", "/") unless android_home.nil?
+if android_home.nil?
+  if (adb_path = which('adb'))
+    android_home = File.dirname(File.dirname(adb_path))
+  else
+    abort 'You need to set the ANDROID_HOME environment variable.'
+  end
+else
+  android_home.gsub! '\\', '/'
 end
-(puts 'You need to set the ANDROID_HOME environment variable.'; exit 1) unless ENV['ANDROID_HOME']
 
-# FIXME(uwe): Simplify when we stop supporting Android SDK < 22: Don't look in pltform-tools for dx
-dx_filename = Dir[File.join(ENV['ANDROID_HOME'], '{build-tools/*,platform-tools}', ON_WINDOWS ? 'dx.bat' : 'dx')][-1]
+# FIXME(uwe): Simplify when we stop supporting Android SDK < 22: Don't look in platform-tools for dx
+DX_FILENAME = Dir[File.join(android_home, '{build-tools/*,platform-tools}', ON_WINDOWS ? 'dx.bat' : 'dx')][-1]
 # EMXIF
 
-unless dx_filename
+unless DX_FILENAME
   puts 'You need to install the Android SDK Build-tools!'
   exit 1
 end
-new_dx_content = File.read(dx_filename).dup
 
-xmx_pattern = ON_WINDOWS ? /^set defaultXmx=-Xmx(\d+)(M|m|G|g|T|t)/ : /^defaultMx="-Xmx(\d+)(M|m|G|g|T|t)"/
-MINIMUM_DX_HEAP_SIZE = 768
-if new_dx_content =~ xmx_pattern &&
-    ($1.to_i * 1024 ** {'M' => 2, 'G' => 3, 'T' => 4}[$2.upcase]) < MINIMUM_DX_HEAP_SIZE*1024**2
-  puts "Increasing max heap space from #$1#$2 to #{MINIMUM_DX_HEAP_SIZE}M in #{dx_filename}"
-  new_xmx_value = ON_WINDOWS ? %Q{set defaultXmx=-Xmx#{MINIMUM_DX_HEAP_SIZE}M} : %Q{defaultMx="-Xmx#{MINIMUM_DX_HEAP_SIZE}M"}
-  new_dx_content.sub!(xmx_pattern, new_xmx_value)
-
-  # FIXME(uwe): For travis debugging  Remove when travis is stable.
-  new_dx_content.sub!(/^exec/, "free\ncat /proc/meminfo\necho Virtual:\nps -e -ovsize=,args= | sort -b -k1,1n | tail -n10\necho RSS:\nps -e -orss=,args= | sort -b -k1,1n | tail -n10\necho $javaOpts\necho $@\njava -XX:+PrintFlagsFinal -version | grep InitialHeapSize\nexec") if RbConfig::CONFIG['host_os'] =~ /linux/
-  # EMXIF
-
-  File.open(dx_filename, 'w') { |f| f << new_dx_content } rescue puts "\n!!! Unable to increase dx heap size !!!\n\n"
-
-  # FIXME(uwe): For travis debugging  Remove when travis is stable.
-  puts new_dx_content.lines.grep(xmx_pattern)
-  # EMXIF
+def manifest;
+  @manifest ||= REXML::Document.new(File.read(MANIFEST_FILE))
 end
 
-def manifest; @manifest ||= REXML::Document.new(File.read(MANIFEST_FILE)) end
-def package; manifest.root.attribute('package') end
-def build_project_name; @build_project_name ||= REXML::Document.new(File.read('build.xml')).elements['project'].attribute(:name).value end
-def scripts_path; @sdcard_path ||= "/mnt/sdcard/Android/data/#{package}/files/scripts" end
-def app_files_path; @app_files_path ||= "/data/data/#{package}/files" end
+def package;
+  manifest.root.attribute('package')
+end
+
+def build_project_name;
+  @build_project_name ||= REXML::Document.new(File.read('build.xml')).elements['project'].attribute(:name).value
+end
+
+def scripts_path;
+  @sdcard_path ||= "/mnt/sdcard/Android/data/#{package}/files/scripts"
+end
+
+def app_files_path;
+  @app_files_path ||= "/data/data/#{package}/files"
+end
 
 PROJECT_DIR = File.expand_path('..', File.dirname(__FILE__))
 UPDATE_MARKER_FILE = File.join(PROJECT_DIR, 'bin', 'LAST_UPDATE')
@@ -91,7 +92,7 @@ RESOURCE_FILES = Dir[File.expand_path 'res/**/*']
 JAVA_SOURCE_FILES = Dir[File.expand_path 'src/**/*.java']
 RUBY_SOURCE_FILES = Dir[File.expand_path 'src/**/*.rb']
 CLASSES_CACHE = "#{PROJECT_DIR}/bin/#{build_project_name}-debug-unaligned.apk.d"
-APK_DEPENDENCIES = [MANIFEST_FILE, RUBOTO_CONFIG_FILE, BUNDLE_JAR, CLASSES_CACHE] + JRUBY_JARS + JARS + JAVA_SOURCE_FILES + RESOURCE_FILES + RUBY_SOURCE_FILES
+APK_DEPENDENCIES = [:patch_dex, MANIFEST_FILE, RUBOTO_CONFIG_FILE, BUNDLE_JAR, CLASSES_CACHE] + JRUBY_JARS + JARS + JAVA_SOURCE_FILES + RESOURCE_FILES + RUBY_SOURCE_FILES
 KEYSTORE_FILE = (key_store = File.readlines('ant.properties').grep(/^key.store=/).first) ? File.expand_path(key_store.chomp.sub(/^key.store=/, '').sub('${user.home}', '~')) : "#{build_project_name}.keystore"
 KEYSTORE_ALIAS = (key_alias = File.readlines('ant.properties').grep(/^key.alias=/).first) ? key_alias.chomp.sub(/^key.alias=/, '') : build_project_name
 APK_FILE_REGEXP = /^-rw-r--r--\s+(?:system|\d+\s+\d+)\s+(?:system|\d+)\s+(\d+)\s+(\d{4}-\d{2}-\d{2} \d{2}:\d{2}|\w{3} \d{2}\s+(?:\d{4}|\d{2}:\d{2}))\s+(.*)$/
@@ -149,7 +150,7 @@ desc 'uninstall, build, and install the application'
 task :reinstall => [:uninstall, APK_FILE, :install]
 
 namespace :install do
-  # FIXME(uwe):  Remove in 2013
+  # FIXME(uwe):  Remove December 2013
   desc 'Deprecated:  use "reinstall" instead.'
   task :clean => :reinstall do
     puts '"rake install:clean" is deprecated.  Use "rake reinstall" instead.'
@@ -237,7 +238,7 @@ file RUBOTO_CONFIG_FILE
 file JRUBY_ADAPTER_FILE => RUBOTO_CONFIG_FILE do
   require 'yaml'
   if (heap_alloc = YAML.load(File.read(RUBOTO_CONFIG_FILE))['heap_alloc'])
-  config = <<EOF
+    config = <<EOF
             // BEGIN Ruboto HeapAlloc
             @SuppressWarnings("unused")
             byte[] arrayForHeapAllocation = new byte[#{heap_alloc} * 1024 * 1024];
@@ -255,11 +256,24 @@ EOF
   end
   source = File.read(JRUBY_ADAPTER_FILE)
   heap_alloc_pattern = %r{^\s*// BEGIN Ruboto HeapAlloc\n.*^\s*// END Ruboto HeapAlloc\n}m
-  File.open(JRUBY_ADAPTER_FILE, 'w'){|f| f << source.sub(heap_alloc_pattern, config)}
+  File.open(JRUBY_ADAPTER_FILE, 'w') { |f| f << source.sub(heap_alloc_pattern, config) }
 end
 
 file APK_FILE => APK_DEPENDENCIES do |t|
   build_apk(t, false)
+end
+
+MINIMUM_DX_HEAP_SIZE = 768
+task :patch_dex do
+  new_dx_content = File.read(DX_FILENAME).dup
+  xmx_pattern = ON_WINDOWS ? /^set defaultXmx=-Xmx(\d+)(M|m|G|g|T|t)/ : /^defaultMx="-Xmx(\d+)(M|m|G|g|T|t)"/
+  if new_dx_content =~ xmx_pattern &&
+      ($1.to_i * 1024 ** {'M' => 2, 'G' => 3, 'T' => 4}[$2.upcase]) < MINIMUM_DX_HEAP_SIZE*1024**2
+    puts "Increasing max heap space from #$1#$2 to #{MINIMUM_DX_HEAP_SIZE}M in #{DX_FILENAME}"
+    new_xmx_value = ON_WINDOWS ? %Q{set defaultXmx=-Xmx#{MINIMUM_DX_HEAP_SIZE}M} : %Q{defaultMx="-Xmx#{MINIMUM_DX_HEAP_SIZE}M"}
+    new_dx_content.sub!(xmx_pattern, new_xmx_value)
+    File.open(DX_FILENAME, 'w') { |f| f << new_dx_content } rescue puts "\n!!! Unable to increase dx heap size !!!\n\n"
+  end
 end
 
 desc 'Copy scripts to emulator or device'
@@ -269,13 +283,34 @@ end
 
 namespace :update_scripts do
   desc 'Copy scripts to emulator and restart the app'
-  task :restart => APK_DEPENDENCIES do |t|
+  task :restart => APK_DEPENDENCIES - RUBY_SOURCE_FILES do |t|
     if build_apk(t, false) || !stop_app
       install_apk
     else
       update_scripts
     end
     start_app
+  end
+
+  desc 'Copy scripts to emulator and restart the app'
+  task :start => APK_DEPENDENCIES - RUBY_SOURCE_FILES do |t|
+    if build_apk(t, false)
+      install_apk
+    else
+      update_scripts
+    end
+    start_app # FIXME(uwe): Should trigger reload of updated scripts
+  end
+
+  desc 'Copy scripts to emulator and reload'
+  task :reload => APK_DEPENDENCIES - RUBY_SOURCE_FILES do |t|
+    if build_apk(t, false)
+      install_apk
+      start_app
+    else
+      scripts = update_scripts
+      reload_scripts(scripts) if scripts
+    end
   end
 end
 
@@ -291,11 +326,10 @@ namespace :test do
   task :quick => :update_scripts do
     Dir.chdir('test') do
       puts 'Running quick tests'
-      sh "#{ANT_CMD} instrument"
       install_retry_count = 0
       begin
         timeout 120 do
-          sh "#{ANT_CMD} installi"
+          sh "#{ANT_CMD} instrument install"
         end
       rescue TimeoutError
         puts 'Installing package timed out.'
@@ -355,7 +389,7 @@ file BUNDLE_JAR => [GEM_FILE, GEM_LOCK_FILE] do
       $VERBOSE = old_verbose
     end
     Gem.platforms = platforms
-    Gem.paths = gem_paths
+    Gem.paths = gem_paths["GEM_PATH"]
   else
     # Bundler.settings[:platform] = Gem::Platform::DALVIK
     sh "bundle install --gemfile #{GEM_FILE} --path=#{BUNDLE_PATH} --platform=dalvik#{sdk_level}"
@@ -486,10 +520,9 @@ Java::json.ext.ParserService.new.basicLoad(JRuby.runtime)
     end
   end
 
-
   FileUtils.rm_f BUNDLE_JAR
   Dir["#{gem_path}/*"].each_with_index do |gem_dir, i|
-    `jar #{i == 0 ? 'c' : 'u'}f #{BUNDLE_JAR} -C #{gem_dir}/lib .`
+    `jar #{i == 0 ? 'c' : 'u'}f "#{BUNDLE_JAR}" -C "#{gem_dir}/lib" .`
   end
   FileUtils.rm_rf BUNDLE_PATH
 end
@@ -586,11 +619,6 @@ def build_apk(t, release)
   if release
     sh "#{ANT_CMD} release"
   else
-
-    # FIXME(uwe): For travis debugging  Remove when travis is stable.
-    sh 'free' if RbConfig::CONFIG['host_os'] =~ /linux/
-    # EMXIF
-
     sh "#{ANT_CMD} debug"
   end
   true
@@ -672,22 +700,34 @@ end
 
 def update_scripts
   `adb shell mkdir -p #{scripts_path}` if !device_path_exists?(scripts_path)
-  puts 'Pushing files to apk public file area.'
   last_update = File.exists?(UPDATE_MARKER_FILE) ? Time.parse(File.read(UPDATE_MARKER_FILE)) : Time.parse('1970-01-01T00:00:00')
   Dir.chdir('src') do
-    Dir['**/*.rb'].each do |script_file|
-      next if File.directory? script_file
-      next if File.mtime(script_file) < last_update
-      next if script_file =~ /~$/
-      print "#{script_file}: "; $stdout.flush
-      `adb push #{script_file} #{scripts_path}/#{script_file}`
+    source_files = Dir['**/*.rb']
+    changed_files = source_files.select { |f| !File.directory?(f) && File.mtime(f) >= last_update && f !~ /~$/ }
+    unless changed_files.empty?
+      puts 'Pushing files to apk public file area.'
+      changed_files.each do |script_file|
+        print "#{script_file}: "; $stdout.flush
+        `adb push #{script_file} #{scripts_path}/#{script_file}`
+      end
+      mark_update
+      return changed_files
     end
   end
-  mark_update
+  return nil
 end
 
 def start_app
   `adb shell am start -a android.intent.action.MAIN -n #{package}/.#{main_activity}`
+end
+
+# Triggers reload of updated scripts and restart of the current activity
+def reload_scripts(scripts)
+  scripts.each.with_index do |s, i|
+    cmd = "adb shell am broadcast -a android.intent.action.VIEW -e file #{s} #{'-e restart YES' if i == (scripts.size - 1)}"
+    puts cmd
+    system cmd
+  end
 end
 
 def stop_app
